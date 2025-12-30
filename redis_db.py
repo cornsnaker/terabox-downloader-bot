@@ -6,6 +6,7 @@ import typing
 from typing import Any
 
 from redis import Redis as r
+from redis.exceptions import ConnectionError
 
 from config import HOST, PASSWORD, PORT
 
@@ -49,13 +50,20 @@ class Redis(r):
             sys.exit()
         self.logger = logger
         self._cache = {}
+        # Thread starting moved to explicit call
+        # threading.Thread(target=self.re_cache).start()
+
+    def start_cache_thread(self):
         threading.Thread(target=self.re_cache).start()
 
     def re_cache(self):
-        key = self.keys()
-        for keys in key:
-            self._cache[keys] = self.get(keys)
-        self.logger.info("Cached {} keys".format(len(self._cache)))
+        try:
+            key = self.keys()
+            for keys in key:
+                self._cache[keys] = self.get(keys)
+            self.logger.info("Cached {} keys".format(len(self._cache)))
+        except Exception as e:
+            self.logger.error(f"Error in re_cache: {e}")
 
     def get_key(self, key: Any):
         if key in self._cache:
@@ -84,6 +92,12 @@ db = Redis(
 
 
 log.info(f"Starting redis on {HOST}:{PORT}")
-if not db.ping():
-    log.error(f"Redis is not available on {HOST}:{PORT}")
-    exit(1)
+try:
+    if not db.ping():
+        log.error(f"Redis is not available on {HOST}:{PORT}")
+        sys.exit(1)
+    else:
+        db.start_cache_thread()
+except (ConnectionError, ConnectionRefusedError) as e:
+    log.error(f"Redis is not available on {HOST}:{PORT}. Error: {e}")
+    sys.exit(1)
