@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import typing
 from typing import Any
 
@@ -91,13 +92,21 @@ db = Redis(
 )
 
 
-log.info(f"Starting redis on {HOST}:{PORT}")
-try:
-    if not db.ping():
-        log.error(f"Redis is not available on {HOST}:{PORT}")
-        sys.exit(1)
-    else:
-        db.start_cache_thread()
-except (ConnectionError, ConnectionRefusedError) as e:
-    log.error(f"Redis is not available on {HOST}:{PORT}. Error: {e}")
+def check_redis_connection(retries=5, delay=5):
+    log.info(f"Starting redis on {HOST}:{PORT}")
+    for i in range(retries):
+        try:
+            if db.ping():
+                log.info(f"Redis connected on {HOST}:{PORT}")
+                db.start_cache_thread()
+                return
+        except (ConnectionError, ConnectionRefusedError) as e:
+            log.warning(f"Attempt {i+1}/{retries}: Redis is not available on {HOST}:{PORT}. Error: {e}")
+
+        if i < retries - 1:
+            time.sleep(delay)
+
+    log.error(f"Could not connect to Redis after {retries} attempts.")
     sys.exit(1)
+
+check_redis_connection()
